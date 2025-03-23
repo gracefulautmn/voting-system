@@ -17,6 +17,18 @@ export default function Voting() {
   const [hasVoted, setHasVoted] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
+  // Helper function to get properly formatted image URL
+  const getImageUrl = (imageUrl) => {
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('http')) return imageUrl;
+    
+    // If it's just a filename, generate the full URL
+    return supabase.storage
+      .from('candidate.images')
+      .getPublicUrl(imageUrl)
+      .data.publicUrl;
+  };
+
   useEffect(() => {
     // Jika user belum login, redirect ke halaman login
     if (!user) {
@@ -28,74 +40,111 @@ export default function Voting() {
     const fetchData = async () => {
       try {
         // Ambil data kandidat
+        console.log("Fetching candidates data...");
         const { data: candidatesData, error: candidatesError } = await supabase
           .from('candidates')
           .select('*')
           .order('id')
 
-        if (candidatesError) throw candidatesError
+        if (candidatesError) {
+          console.error("Error fetching candidates:", candidatesError);
+          throw candidatesError;
+        }
+        
+        console.log("Candidates data:", candidatesData);
         setCandidates(candidatesData || [])
 
         // Cek apakah user sudah voting
+        console.log("Checking if user has voted. User ID:", user.id);
+        
         const { data: voteData, error: voteError } = await supabase
           .from('votes')
           .select('*')
-          .eq('user_id', user.id)
-          .single()
+          .eq('user_id', user.id);
+        
+        console.log("Vote data:", voteData);
+        
+        if (voteError) {
+          console.error("Error checking votes:", voteError);
+          // Don't throw error here, just log it
+        }
 
-        if (voteData) {
-          setHasVoted(true)
+        if (voteData && voteData.length > 0) {
+          setHasVoted(true);
           // Jika sudah voting, set selected candidate
-          const { data: selectedCandidateData } = await supabase
+          const { data: selectedCandidateData, error: candidateError } = await supabase
             .from('candidates')
             .select('*')
-            .eq('id', voteData.candidate_id)
-            .single()
+            .eq('id', voteData[0].candidate_id)
+            .single();
           
-          if (selectedCandidateData) {
-            setSelectedCandidate(selectedCandidateData.id)
+          if (candidateError) {
+            console.error("Error fetching selected candidate:", candidateError);
+          } else if (selectedCandidateData) {
+            console.log("Selected candidate:", selectedCandidateData);
+            setSelectedCandidate(selectedCandidateData.id);
           }
         }
       } catch (error) {
-        console.error(error)
-        setError('Gagal memuat data. Silakan coba lagi.')
+        console.error("Fetch data error:", error);
+        setError('Gagal memuat data. Silakan coba lagi.');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    fetchData()
-  }, [supabase, user, router])
+    fetchData();
+  }, [supabase, user, router]);
 
   const handleVote = async () => {
-    if (!selectedCandidate || hasVoted) return
+    if (!selectedCandidate || hasVoted) return;
 
-    setSubmitting(true)
+    setSubmitting(true);
     try {
-      // Simpan data vote
-      const { error } = await supabase.from('votes').insert({
+      console.log("Submitting vote for candidate ID:", selectedCandidate);
+      
+      const nim = localStorage.getItem('nim') || '';
+      const programCode = nim.substring(0, 4) || null;
+      
+      console.log("Vote data:", {
         user_id: user.id,
         candidate_id: selectedCandidate,
-        nim: localStorage.getItem('nim'),
-        program_code: localStorage.getItem('nim')?.substring(0, 4) || null
-      })
+        nim,
+        program_code: programCode
+      });
+      
+      // Simpan data vote
+      const { error: voteError } = await supabase.from('votes').insert({
+        user_id: user.id,
+        candidate_id: selectedCandidate,
+        nim,
+        program_code: programCode
+      });
 
-      if (error) throw error
+      if (voteError) {
+        console.error("Error submitting vote:", voteError);
+        throw voteError;
+      }
 
-      setHasVoted(true)
-      setSuccessMessage('Terima kasih! Suara Anda telah berhasil dicatat.')
+      setHasVoted(true);
+      setSuccessMessage('Terima kasih! Suara Anda telah berhasil dicatat.');
     } catch (error) {
-      console.error(error)
-      setError('Gagal menyimpan suara. Silakan coba lagi.')
+      console.error("Vote submission error:", error);
+      setError('Gagal menyimpan suara. Silakan coba lagi.');
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    localStorage.removeItem('nim')
-    router.push('/')
+    try {
+      await supabase.auth.signOut();
+      localStorage.removeItem('nim');
+      router.push('/');
+    } catch (error) {
+      console.error("Logout error:", error);
+      setError('Gagal logout. Silakan coba lagi.');
+    }
   }
 
   if (loading) {
@@ -160,9 +209,14 @@ export default function Voting() {
               <div className="mb-4 aspect-video relative overflow-hidden rounded-md">
                 {candidate.image_url ? (
                   <img
-                    src={candidate.image_url}
+                    src={getImageUrl(candidate.image_url)}
                     alt={`Kandidat ${candidate.id}`}
                     className="h-full w-full object-cover"
+                    onError={(e) => {
+                      console.error("Image failed to load:", e.target.src);
+                      e.target.onerror = null;
+                      e.target.src = ""; // Blank image on error
+                    }}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-gray-200">
