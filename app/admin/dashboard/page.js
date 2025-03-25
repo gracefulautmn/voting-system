@@ -391,31 +391,30 @@ function CandidatesManager({ candidates, supabase, refresh }) {
   
     setUploading(true);
     try {
-      // Bersihkan nama file
-      const cleanFileName = (fileName) => {
-        return fileName.replace(/[^a-zA-Z0-9._-]/g, '');
-      };
-  
-      const fileName = `${Date.now()}_${cleanFileName(file.name)}`;
+      // Generate nama file unik
+      const fileName = `candidate_${Date.now()}.${file.name.split('.').pop()}`;
   
       // Unggah file ke Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('candidate.images') // Pastikan nama bucket benar
-        .upload(fileName, file);
+      const { data, error: uploadError } = await supabase.storage
+        .from('candidate.images')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
   
-      if (error) throw error;
+      if (uploadError) throw uploadError;
   
-      // Dapatkan URL publik file yang diunggah
-      const { data: urlData } = supabase.storage
+      // Dapatkan URL publik
+      const { data: { publicUrl } } = supabase.storage
         .from('candidate.images')
         .getPublicUrl(data.path);
   
       setUploading(false);
-      return urlData.publicUrl; // Kembalikan URL gambar
+      return publicUrl;
     } catch (error) {
       setUploading(false);
-      console.error('Error uploading image:', error); // Log error ke console
-      setError('Gagal mengunggah gambar. Silakan coba lagi.');
+      console.error('Upload error:', error);
+      setError(`Gagal mengunggah gambar: ${error.message}`);
       return null;
     }
   };
@@ -423,7 +422,9 @@ function CandidatesManager({ candidates, supabase, refresh }) {
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
+      console.log('File selected:', file.name, file.type, file.size);
       const imageUrl = await handleImageUpload(file);
+      console.log('Image URL:', imageUrl);
       if (imageUrl) {
         setFormData((prev) => ({ ...prev, image_url: imageUrl }));
       }
@@ -625,7 +626,14 @@ function CandidatesManager({ candidates, supabase, refresh }) {
                     src={formData.image_url}
                     alt="Preview"
                     className="h-20 w-20 rounded-md object-cover"
+                    onError={(e) => {
+                      console.error('Error loading image:', formData.image_url);
+                      e.target.style.display = 'none';
+                    }}
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {formData.image_url}
+                  </p>
                 </div>
               )}
             </div>

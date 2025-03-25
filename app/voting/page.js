@@ -25,7 +25,7 @@ export default function Voting() {
     // If it's just a filename, generate the full URL
     return supabase.storage
       .from('candidate.images')
-      .getPublicUrl(imageUrl)
+      .getPublicUrl('1742742780445_082d2ac06628c86984ed5727aefcb4cb.jpg')
       .data.publicUrl;
   };
 
@@ -191,7 +191,7 @@ export default function Voting() {
           </div>
         ) : (
           <p className="mb-6 text-gray-600">
-            Silakan pilih salah satu kandidat berikut dan klik tombol "Kirim Suara" untuk memberikan suara Anda.
+            {/* Silakan pilih salah satu kandidat berikut dan klik tombol "Kirim Suara" untuk memberikan suara Anda. */}
           </p>
         )}
 
